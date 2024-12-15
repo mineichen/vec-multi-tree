@@ -9,9 +9,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+vec-multi-tree = { path = "..", features = ["fuzz"] }
 
-[dependencies.vec-multi-tree]
-path = ".."
 
 [[bin]]
 name = "insert"

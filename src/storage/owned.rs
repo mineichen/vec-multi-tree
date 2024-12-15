@@ -1,6 +1,6 @@
-use crate::{Color, Node};
-
 use super::{InternalStorage, Storage};
+use crate::{Color, Node};
+use alloc::vec::Vec;
 
 pub struct VecStorage<T>(Vec<Node<T>>);
 
@@ -12,7 +12,7 @@ impl<T> VecStorage<T> {
     pub(crate) fn new_with(value: T) -> Self {
         let mut node: Node<_> = value.into();
         node.color = Color::Black;
-        Self(vec![node])
+        Self(alloc::vec![node])
     }
 }
 
@@ -37,7 +37,7 @@ impl<T> InternalStorage for VecStorage<T> {
     {
         self.0.iter().cloned().collect()
     }
-
+    #[cfg(any(feature = "std", test))]
     fn debug_str(&self) -> String
     where
         Self::Item: std::fmt::Debug,

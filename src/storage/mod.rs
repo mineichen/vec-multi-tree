@@ -1,4 +1,4 @@
-use std::{
+use core::{
     cell::UnsafeCell,
     fmt::Debug,
     ops::{Deref, DerefMut},
@@ -6,10 +6,16 @@ use std::{
 
 use crate::{Color, Node, RedBlackTreeSet};
 
+#[cfg(feature = "alloc")]
 mod owned;
+
+#[cfg(feature = "alloc")]
 mod shared;
 
+#[cfg(feature = "alloc")]
 pub use owned::VecStorage;
+
+#[cfg(feature = "alloc")]
 pub use shared::SharedVecStorage;
 
 // pub struct OwnedVecStorage<T>(VecStorage<T>);
@@ -40,6 +46,7 @@ pub trait InternalStorage: Storage {
     fn debug_nodes(&self) -> Vec<Node<Self::Item>>
     where
         Self::Item: Copy;
+    #[cfg(any(feature = "std", test))]
     fn debug_str(&self) -> String
     where
         Self::Item: Debug;

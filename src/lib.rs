@@ -1,12 +1,16 @@
 #![doc = include_str!("../README.md")]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 mod key;
 mod storage;
 
-use std::collections::VecDeque;
+use core::cmp::Ordering;
 
 use key::OptionKey;
-use storage::{InternalStorage, Storage, VecStorage};
+use storage::{InternalStorage, Storage};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Color {
@@ -48,14 +52,16 @@ pub struct RedBlackTreeSet<TStorage> {
     root: usize,
 }
 
-impl<T: Ord> RedBlackTreeSet<VecStorage<T>> {
+#[cfg(feature = "alloc")]
+impl<T: Ord> RedBlackTreeSet<storage::VecStorage<T>> {
     pub fn new(value: T) -> Self {
         RedBlackTreeSet {
-            nodes: VecStorage::new_with(value),
+            nodes: storage::VecStorage::new_with(value),
             root: 0,
         }
     }
 }
+
 impl<TStorage: InternalStorage> RedBlackTreeSet<TStorage>
 where
     <TStorage as Storage>::Item: Ord,
@@ -75,7 +81,7 @@ where
         let mut current = self.root;
         loop {
             match self.compare_node_value(current, &new_node.value) {
-                std::cmp::Ordering::Less => {
+                Ordering::Less => {
                     let cur_node = self.nodes.get_mut(current);
                     if cur_node.right.insert_if_none(new_node_idx) {
                         new_node.parent = OptionKey::new(current);
@@ -83,7 +89,7 @@ where
                     }
                     current = cur_node.right.unwrap();
                 }
-                std::cmp::Ordering::Greater => {
+                Ordering::Greater => {
                     let cur_node = self.nodes.get_mut(current);
                     if cur_node.left.insert_if_none(new_node_idx) {
                         new_node.parent = OptionKey::new(current);
@@ -91,7 +97,7 @@ where
                     }
                     current = cur_node.left.unwrap();
                 }
-                std::cmp::Ordering::Equal => {
+                Ordering::Equal => {
                     // If equal, we could either replace or keep existing
                     // Here we're choosing to keep existing
                     return current;
@@ -165,11 +171,7 @@ where
         self.nodes.get_mut(self.root).color = Color::Black;
     }
 
-    fn compare_node_value(
-        &self,
-        node_idx: usize,
-        value: &<TStorage as Storage>::Item,
-    ) -> std::cmp::Ordering {
+    fn compare_node_value(&self, node_idx: usize, value: &<TStorage as Storage>::Item) -> Ordering {
         self.nodes.get(node_idx).value.cmp(value)
     }
 
@@ -238,13 +240,13 @@ where
 
         loop {
             match self.compare_node_value(current, value) {
-                std::cmp::Ordering::Equal => {
+                Ordering::Equal => {
                     return Some(current);
                 }
-                std::cmp::Ordering::Less => {
+                Ordering::Less => {
                     current = self.nodes.get(current).right.get()?;
                 }
-                std::cmp::Ordering::Greater => {
+                Ordering::Greater => {
                     current = self.nodes.get(current).left.get()?;
                 }
             }
@@ -320,7 +322,8 @@ where
     }
 }
 
-impl<T> RedBlackTreeSet<VecStorage<T>> {
+#[cfg(any(feature = "fuzz", test))]
+impl<T> RedBlackTreeSet<storage::VecStorage<T>> {
     pub fn validate_constraints(&self) {
         let root_node = &self.nodes.get(self.root);
         assert_eq!(root_node.color, Color::Black);
@@ -344,11 +347,15 @@ impl<T> RedBlackTreeSet<VecStorage<T>> {
     }
 }
 
-fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<VecStorage<&u8>>> {
+#[cfg(any(feature = "fuzz", test))]
+fn build_fuzz_tree<const LOG: bool>(
+    data: &[u8],
+) -> Option<RedBlackTreeSet<storage::VecStorage<&u8>>> {
     let mut iter = data.into_iter();
     let first = iter.next()?;
     let mut tree = RedBlackTreeSet::new(first);
     for x in data {
+        #[cfg(test)]
         if LOG {
             println!("");
         }
@@ -362,7 +369,7 @@ fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<VecSt
     }
     Some(tree)
 }
-
+#[cfg(any(feature = "fuzz", test))]
 pub fn fuzz_insert(data: &[u8]) {
     let Some(tree) = build_fuzz_tree::<false>(data) else {
         return;

@@ -1,8 +1,7 @@
-use std::cell::UnsafeCell;
-
-use crate::{Color, Node, RedBlackTreeSet};
+use core::cell::UnsafeCell;
 
 use super::{owned::VecStorage, InternalStorage, Storage};
+use crate::{Color, Node, RedBlackTreeSet};
 
 pub struct SharedVecStorage<T> {
     nodes: UnsafeCell<VecStorage<T>>,
@@ -45,9 +44,10 @@ impl<'a, T> InternalStorage for &'a SharedVecStorage<T> {
         unsafe { &*self.nodes.get() }.debug_nodes()
     }
 
+    #[cfg(any(feature = "std", test))]
     fn debug_str(&self) -> String
     where
-        Self::Item: std::fmt::Debug,
+        Self::Item: core::fmt::Debug,
     {
         unsafe { &*self.nodes.get() }.debug_str()
     }

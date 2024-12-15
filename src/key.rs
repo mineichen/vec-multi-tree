@@ -1,13 +1,13 @@
 //! Option<usize> would be too inefficient... use magic-value usize::MAX for null
 //! This could only be achieved, if the vec contains usize::MAX elements, which is not possible, as removal just unlinks items
-use std::{fmt::Debug, usize};
+use core::{fmt::Debug, usize};
 
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq)]
 pub(super) struct OptionKey(usize);
 
 impl Debug for OptionKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.0 == usize::MAX {
             f.debug_tuple("None").finish()
         } else {
