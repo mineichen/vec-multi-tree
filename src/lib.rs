@@ -44,12 +44,12 @@ impl<T> From<T> for Node<T> {
     }
 }
 
-pub struct RedBlackTreeSet<T> {
-    nodes: VecStorage<T>,
+pub struct RedBlackTreeSet<TStorage> {
+    nodes: TStorage,
     root: usize,
 }
 
-impl<T: Ord> RedBlackTreeSet<T> {
+impl<T: Ord> RedBlackTreeSet<VecStorage<T>> {
     pub fn new(value: T) -> Self {
         RedBlackTreeSet {
             nodes: VecStorage::new(value),
@@ -250,11 +250,11 @@ impl<T: Ord> RedBlackTreeSet<T> {
 
 // Iter struct to allow in-order traversal
 pub struct Iter<'a, T: Ord> {
-    tree: &'a RedBlackTreeSet<T>,
+    tree: &'a RedBlackTreeSet<VecStorage<T>>,
     stack: VecDeque<usize>,
 }
 
-impl<'a, T: Ord> IntoIterator for &'a RedBlackTreeSet<T> {
+impl<'a, T: Ord> IntoIterator for &'a RedBlackTreeSet<VecStorage<T>> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
 
@@ -297,7 +297,7 @@ impl<'a, T: Ord> Iterator for Iter<'a, T> {
     }
 }
 
-impl<T> RedBlackTreeSet<T> {
+impl<T> RedBlackTreeSet<VecStorage<T>> {
     pub fn validate_constraints(&self) {
         let root_node = &self.nodes.get(self.root);
         assert_eq!(root_node.color, Color::Black);
@@ -321,7 +321,7 @@ impl<T> RedBlackTreeSet<T> {
     }
 }
 
-fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<&u8>> {
+fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<VecStorage<&u8>>> {
     let mut iter = data.into_iter();
     let first = iter.next()?;
     let mut tree = RedBlackTreeSet::new(first);
