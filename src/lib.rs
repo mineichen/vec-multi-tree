@@ -6,7 +6,7 @@ mod storage;
 use std::collections::VecDeque;
 
 use key::OptionKey;
-use storage::{InternalStorage, Storage};
+use storage::{InternalStorage, Storage, VecStorage};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Color {
@@ -14,7 +14,7 @@ enum Color {
     Black,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 struct Node<T> {
     value: T,
     color: Color,
@@ -51,14 +51,10 @@ pub struct RedBlackTreeSet<TStorage> {
     root: usize,
 }
 
-impl<T: Ord> RedBlackTreeSet<Vec<Node<T>>> {
+impl<T: Ord> RedBlackTreeSet<VecStorage<T>> {
     pub fn new(value: T) -> Self {
         RedBlackTreeSet {
-            nodes: {
-                let mut node: Node<_> = value.into();
-                node.color = Color::Black;
-                vec![node]
-            },
+            nodes: VecStorage::new_with(value),
             root: 0,
         }
     }
@@ -321,7 +317,7 @@ where
     }
 }
 
-impl<T> RedBlackTreeSet<Vec<Node<T>>> {
+impl<T> RedBlackTreeSet<VecStorage<T>> {
     pub fn validate_constraints(&self) {
         let root_node = &self.nodes.get(self.root);
         assert_eq!(root_node.color, Color::Black);
@@ -345,7 +341,7 @@ impl<T> RedBlackTreeSet<Vec<Node<T>>> {
     }
 }
 
-fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<Vec<Node<&u8>>>> {
+fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<VecStorage<&u8>>> {
     let mut iter = data.into_iter();
     let first = iter.next()?;
     let mut tree = RedBlackTreeSet::new(first);
@@ -392,7 +388,11 @@ mod tests {
 
         assert_eq!(
             vec![Color::Red, Color::Black, Color::Red],
-            tree.nodes.iter().map(|x| x.color).collect::<Vec<_>>()
+            tree.nodes
+                .debug_nodes()
+                .iter()
+                .map(|x| x.color)
+                .collect::<Vec<_>>()
         );
         assert_eq!(vec![1, 5, 15], tree.iter().copied().collect::<Vec<_>>());
     }
@@ -489,7 +489,7 @@ mod tests {
                     right: OptionKey::none(),
                 },
             ],
-            tree.nodes.iter().collect::<Vec<_>>()
+            tree.nodes.debug_nodes().iter().collect::<Vec<_>>()
         );
     }
 
