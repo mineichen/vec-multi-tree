@@ -1,6 +1,9 @@
+mod storage;
+
 use std::collections::VecDeque;
 
 use key::OptionKey;
+use storage::VecStorage;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Color {
@@ -105,16 +108,14 @@ mod key {
 }
 
 pub struct RedBlackTreeSet<T> {
-    nodes: Vec<Node<T>>,
+    nodes: VecStorage<T>,
     root: usize,
 }
 
 impl<T: Ord> RedBlackTreeSet<T> {
     pub fn new(value: T) -> Self {
-        let mut node: Node<_> = value.into();
-        node.color = Color::Black;
         RedBlackTreeSet {
-            nodes: vec![node],
+            nodes: VecStorage::new(value),
             root: 0,
         }
     }
@@ -135,18 +136,20 @@ impl<T: Ord> RedBlackTreeSet<T> {
         loop {
             match self.compare_node_value(current, &new_node.value) {
                 std::cmp::Ordering::Less => {
-                    if self.nodes[current].right.insert_if_none(new_node_idx) {
+                    let cur_node = self.nodes.get_mut(current);
+                    if cur_node.right.insert_if_none(new_node_idx) {
                         new_node.parent = OptionKey::new(current);
                         break;
                     }
-                    current = self.nodes[current].right.unwrap();
+                    current = cur_node.right.unwrap();
                 }
                 std::cmp::Ordering::Greater => {
-                    if self.nodes[current].left.insert_if_none(new_node_idx) {
+                    let cur_node = self.nodes.get_mut(current);
+                    if cur_node.left.insert_if_none(new_node_idx) {
                         new_node.parent = OptionKey::new(current);
                         break;
                     }
-                    current = self.nodes[current].left.unwrap();
+                    current = cur_node.left.unwrap();
                 }
                 std::cmp::Ordering::Equal => {
                     // If equal, we could either replace or keep existing
@@ -164,7 +167,7 @@ impl<T: Ord> RedBlackTreeSet<T> {
 
     fn insert_fixup(&mut self, mut node: usize) {
         let mut limit = 10;
-        while let Some(parent_idx) = self.nodes[node].parent.get() {
+        while let Some(parent_idx) = self.nodes.get(node).parent.get() {
             limit -= 1;
             if limit == 0 {
                 panic!("Infinite Recursion");
@@ -172,39 +175,39 @@ impl<T: Ord> RedBlackTreeSet<T> {
 
             //println!("Fixup {node}");
             // If parent is black, tree is valid
-            if self.nodes[parent_idx].color == Color::Black {
+            if self.nodes.get(parent_idx).color == Color::Black {
                 break;
             }
 
             // Get grandparent (must exist if parent is red)
-            let grandparent_idx = self.nodes[parent_idx].parent.unwrap();
-            let is_parent_right = self.nodes[grandparent_idx].is_right(parent_idx);
+            let grandparent_idx = self.nodes.get(parent_idx).parent.unwrap();
+            let is_parent_right = self.nodes.get(grandparent_idx).is_right(parent_idx);
 
             let uncle_idx = if !is_parent_right {
-                self.nodes[grandparent_idx].right
+                self.nodes.get(grandparent_idx).right
             } else {
-                self.nodes[grandparent_idx].left
+                self.nodes.get(grandparent_idx).left
             };
 
             // Uncle red case
             if let Some(uncle_idx) = uncle_idx
                 .get()
-                .filter(|&idx| self.nodes[idx].color == Color::Red)
+                .filter(|&idx| self.nodes.get(idx).color == Color::Red)
             {
-                self.nodes[parent_idx].color = Color::Black;
-                self.nodes[uncle_idx].color = Color::Black;
-                self.nodes[grandparent_idx].color = Color::Red;
+                self.nodes.get_mut(parent_idx).color = Color::Black;
+                self.nodes.get_mut(uncle_idx).color = Color::Black;
+                self.nodes.get_mut(grandparent_idx).color = Color::Red;
                 node = grandparent_idx;
                 continue;
             }
 
-            let is_node_right = self.nodes[parent_idx].is_right(node);
+            let is_node_right = self.nodes.get(parent_idx).is_right(node);
             // Rotation cases
             match (is_parent_right, is_node_right) {
                 (true, true) => {
-                    let parent_index = self.nodes[node].parent.unwrap();
-                    self.nodes[parent_index].color = Color::Black;
-                    self.nodes[grandparent_idx].color = Color::Red;
+                    let parent_index = self.nodes.get(node).parent.unwrap();
+                    self.nodes.get_mut(parent_index).color = Color::Black;
+                    self.nodes.get_mut(grandparent_idx).color = Color::Red;
                     self.rotate_left(grandparent_idx);
                 }
                 (true, false) => {
@@ -216,70 +219,73 @@ impl<T: Ord> RedBlackTreeSet<T> {
                     self.rotate_left(node);
                 }
                 (false, false) => {
-                    let parent_index = self.nodes[node].parent.unwrap();
-                    self.nodes[parent_index].color = Color::Black;
-                    self.nodes[grandparent_idx].color = Color::Red;
+                    let parent_index = self.nodes.get(node).parent.unwrap();
+                    self.nodes.get_mut(parent_index).color = Color::Black;
+                    self.nodes.get_mut(grandparent_idx).color = Color::Red;
                     self.rotate_right(grandparent_idx);
                 }
             }
         }
 
         // Ensure root is always black
-        self.nodes[self.root].color = Color::Black;
+        self.nodes.get_mut(self.root).color = Color::Black;
     }
 
     fn compare_node_value(&self, node_idx: usize, value: &T) -> std::cmp::Ordering {
-        self.nodes[node_idx].value.cmp(value)
+        self.nodes.get(node_idx).value.cmp(value)
     }
 
     fn rotate_left(&mut self, node_idx: usize) {
         // println!("Rotate left {node_idx}");
-        let right_child_idx = self.nodes[node_idx].right.unwrap();
+        let right_child_idx = self.nodes.get(node_idx).right.unwrap();
 
         // Update parent references
-        self.nodes[right_child_idx].parent = self.nodes[node_idx].parent;
-        if let Some(parent_idx) = self.nodes[node_idx].parent.get() {
-            if self.nodes[parent_idx].left.get() == Some(node_idx) {
-                self.nodes[parent_idx].left = OptionKey::new(right_child_idx);
+        self.nodes.get_mut(right_child_idx).parent = self.nodes.get(node_idx).parent;
+
+        if let Some(parent_idx) = self.nodes.get(node_idx).parent.get() {
+            let parent_node = self.nodes.get_mut(parent_idx);
+            if parent_node.left.get() == Some(node_idx) {
+                parent_node.left = OptionKey::new(right_child_idx);
             } else {
-                self.nodes[parent_idx].right = OptionKey::new(right_child_idx);
+                parent_node.right = OptionKey::new(right_child_idx);
             }
         } else {
             self.root = right_child_idx;
         }
 
         // Rotate
-        self.nodes[node_idx].right = self.nodes[right_child_idx].left;
-        if let Some(left_of_right) = self.nodes[right_child_idx].left.get() {
-            self.nodes[left_of_right].parent = OptionKey::new(node_idx);
+        self.nodes.get_mut(node_idx).right = self.nodes.get(right_child_idx).left;
+        if let Some(left_of_right) = self.nodes.get(right_child_idx).left.get() {
+            self.nodes.get_mut(left_of_right).parent = OptionKey::new(node_idx);
         }
-        self.nodes[right_child_idx].left = OptionKey::new(node_idx);
-        self.nodes[node_idx].parent = OptionKey::new(right_child_idx);
+        self.nodes.get_mut(right_child_idx).left = OptionKey::new(node_idx);
+        self.nodes.get_mut(node_idx).parent = OptionKey::new(right_child_idx);
     }
 
     fn rotate_right(&mut self, node_idx: usize) {
         //  println!("Rotate right");
-        let left_child_idx = self.nodes[node_idx].left.unwrap();
+        let left_child_idx = self.nodes.get(node_idx).left.unwrap();
 
         // Update parent references
-        self.nodes[left_child_idx].parent = self.nodes[node_idx].parent;
-        if let Some(parent_idx) = self.nodes[node_idx].parent.get() {
-            if self.nodes[parent_idx].right.get() == Some(node_idx) {
-                self.nodes[parent_idx].right = OptionKey::new(left_child_idx);
+        self.nodes.get_mut(left_child_idx).parent = self.nodes.get(node_idx).parent;
+        if let Some(parent_idx) = self.nodes.get(node_idx).parent.get() {
+            let parent_node = self.nodes.get_mut(parent_idx);
+            if parent_node.right.get() == Some(node_idx) {
+                parent_node.right = OptionKey::new(left_child_idx);
             } else {
-                self.nodes[parent_idx].left = OptionKey::new(left_child_idx);
+                parent_node.left = OptionKey::new(left_child_idx);
             }
         } else {
             self.root = left_child_idx;
         }
 
         // Rotate
-        self.nodes[node_idx].left = self.nodes[left_child_idx].right;
-        if let Some(right_of_left) = self.nodes[left_child_idx].right.get() {
-            self.nodes[right_of_left].parent = OptionKey::new(node_idx);
+        self.nodes.get_mut(node_idx).left = self.nodes.get(left_child_idx).right;
+        if let Some(right_of_left) = self.nodes.get(left_child_idx).right.get() {
+            self.nodes.get_mut(right_of_left).parent = OptionKey::new(node_idx);
         }
-        self.nodes[left_child_idx].right = OptionKey::new(node_idx);
-        self.nodes[node_idx].parent = OptionKey::new(left_child_idx);
+        self.nodes.get_mut(left_child_idx).right = OptionKey::new(node_idx);
+        self.nodes.get_mut(node_idx).parent = OptionKey::new(left_child_idx);
     }
 
     pub fn iter(&self) -> Iter<'_, T> {
@@ -295,10 +301,10 @@ impl<T: Ord> RedBlackTreeSet<T> {
                     return Some(current);
                 }
                 std::cmp::Ordering::Less => {
-                    current = self.nodes[current].right.get()?;
+                    current = self.nodes.get(current).right.get()?;
                 }
                 std::cmp::Ordering::Greater => {
-                    current = self.nodes[current].left.get()?;
+                    current = self.nodes.get(current).left.get()?;
                 }
             }
         }
@@ -322,7 +328,7 @@ impl<'a, T: Ord> IntoIterator for &'a RedBlackTreeSet<T> {
         let mut current = self.root;
         loop {
             stack.push_back(current);
-            if let Some(x) = self.nodes[current].left.get() {
+            if let Some(x) = self.nodes.get(current).left.get() {
                 current = x;
             } else {
                 break;
@@ -338,7 +344,7 @@ impl<'a, T: Ord> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop_back()?;
-        let node = &self.tree.nodes[current];
+        let node = &self.tree.nodes.get(current);
 
         // Get the value
         let value = &node.value;
@@ -347,7 +353,7 @@ impl<'a, T: Ord> Iterator for Iter<'a, T> {
         let mut current = &node.right;
         while let Some(k) = current.get() {
             self.stack.push_back(k);
-            current = &self.tree.nodes[k].left;
+            current = &self.tree.nodes.get(k).left;
         }
 
         Some(value)
@@ -356,7 +362,7 @@ impl<'a, T: Ord> Iterator for Iter<'a, T> {
 
 impl<T> RedBlackTreeSet<T> {
     pub fn validate_constraints(&self) {
-        let root_node = &self.nodes[self.root];
+        let root_node = &self.nodes.get(self.root);
         assert_eq!(root_node.color, Color::Black);
         self.black_count(root_node, Color::Black);
     }
@@ -366,11 +372,11 @@ impl<T> RedBlackTreeSet<T> {
         }
         (match (node.left.get(), node.right.get()) {
             (None, None) => 0,
-            (None, Some(right)) => self.black_count(&self.nodes[right], node.color),
-            (Some(left), None) => self.black_count(&self.nodes[left], node.color),
+            (None, Some(right)) => self.black_count(&self.nodes.get(right), node.color),
+            (Some(left), None) => self.black_count(&self.nodes.get(left), node.color),
             (Some(left), Some(right)) => {
-                let left_count = self.black_count(&self.nodes[left], node.color);
-                let right_count = self.black_count(&self.nodes[right], node.color);
+                let left_count = self.black_count(&self.nodes.get(left), node.color);
+                let right_count = self.black_count(&self.nodes.get(right), node.color);
                 assert_eq!(left_count, right_count);
                 left_count
             }
@@ -388,15 +394,7 @@ fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<&u8>>
         }
         tree.insert(x);
         if LOG {
-            println!(
-                "Root: {}\n{}",
-                tree.root,
-                tree.nodes
-                    .iter()
-                    .map(|x| format!("{x:?}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
+            println!("Root: {}\n{}", tree.root, tree.nodes.debug_str())
         }
     }
     if LOG {
