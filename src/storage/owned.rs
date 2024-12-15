@@ -58,7 +58,7 @@ impl<T> InternalStorage for VecStorage<T> {
         /// Safety: Is using only indices created by this library
         #[cfg(not(debug_assertions))]
         unsafe {
-            self.get_unchecked(index)
+            self.0.get_unchecked(index)
         }
     }
     #[inline(always)]
@@ -71,7 +71,7 @@ impl<T> InternalStorage for VecStorage<T> {
         /// Safety: Is using only indices created by this library
         #[cfg(not(debug_assertions))]
         unsafe {
-            self.get_unchecked_mut(index)
+            self.0.get_unchecked_mut(index)
         }
     }
 }

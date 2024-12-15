@@ -27,10 +27,7 @@ impl<T> Node<T> {
     #[inline(always)]
     fn is_right(&self, key: usize) -> bool {
         debug_assert!(key != usize::MAX);
-        match self.right.get() {
-            Some(x) => x == key,
-            None => false,
-        }
+        self.right == key
     }
 }
 
@@ -109,13 +106,7 @@ where
     }
 
     fn insert_fixup(&mut self, mut node: usize) {
-        let mut limit = 10;
         while let Some(parent_idx) = self.nodes.get(node).parent.get() {
-            limit -= 1;
-            if limit == 0 {
-                panic!("Infinite Recursion");
-            }
-
             //println!("Fixup {node}");
             // If parent is black, tree is valid
             if self.nodes.get(parent_idx).color == Color::Black {
@@ -191,7 +182,7 @@ where
 
         if let Some(parent_idx) = self.nodes.get(node_idx).parent.get() {
             let parent_node = self.nodes.get_mut(parent_idx);
-            if parent_node.left.get() == Some(node_idx) {
+            if parent_node.left == node_idx {
                 parent_node.left = OptionKey::new(right_child_idx);
             } else {
                 parent_node.right = OptionKey::new(right_child_idx);
@@ -217,7 +208,7 @@ where
         self.nodes.get_mut(left_child_idx).parent = self.nodes.get(node_idx).parent;
         if let Some(parent_idx) = self.nodes.get(node_idx).parent.get() {
             let parent_node = self.nodes.get_mut(parent_idx);
-            if parent_node.right.get() == Some(node_idx) {
+            if parent_node.right == node_idx {
                 parent_node.right = OptionKey::new(left_child_idx);
             } else {
                 parent_node.left = OptionKey::new(left_child_idx);
@@ -265,7 +256,7 @@ where
 
 pub struct Iter<'a, TStorage: InternalStorage> {
     tree: &'a RedBlackTreeSet<TStorage>,
-    stack: VecDeque<usize>,
+    next: OptionKey,
 }
 
 impl<'a, TStorage: 'a + InternalStorage> IntoIterator for &'a RedBlackTreeSet<TStorage>
@@ -276,20 +267,16 @@ where
     type IntoIter = Iter<'a, TStorage>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let mut stack = VecDeque::new();
-
         // Start with the root if it exists and is active
         let mut current = self.root;
-        loop {
-            stack.push_back(current);
-            if let Some(x) = self.nodes.get(current).left.get() {
-                current = x;
-            } else {
-                break;
-            }
+        while let Some(x) = self.nodes.get(current).left.get() {
+            current = x;
         }
 
-        Iter { tree: self, stack }
+        Iter {
+            tree: self,
+            next: OptionKey::new(current),
+        }
     }
 }
 
@@ -300,18 +287,34 @@ where
     type Item = &'a <TStorage as Storage>::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let current = self.stack.pop_back()?;
+        let mut current = self.next.get()?;
         let node = &self.tree.nodes.get(current);
 
         // Get the value
         let value = &node.value;
 
         // Prepare next node in the iteration
-        let mut current = &node.right;
-        while let Some(k) = current.get() {
-            self.stack.push_back(k);
-            current = &self.tree.nodes.get(k).left;
-        }
+        self.next = match node.right.get() {
+            Some(mut x) => {
+                while let Some(k) = &self.tree.nodes.get(x).left.get() {
+                    x = *k;
+                }
+                OptionKey::new(x)
+            }
+            None => {
+                let mut parent = node.parent;
+                while let Some((k, parent_node)) = parent.get().map(|k| (k, self.tree.nodes.get(k)))
+                {
+                    if parent_node.right == current {
+                        current = k;
+                        parent = parent_node.parent;
+                    } else {
+                        break;
+                    }
+                }
+                parent
+            }
+        };
 
         Some(value)
     }
@@ -503,5 +506,10 @@ mod tests {
     fn insert_big_small_smaller() {
         build_fuzz_tree::<true>(&[203, 47, 10]);
         fuzz_insert(&[203, 47, 10]);
+    }
+    #[test]
+    fn fuzzer_fail() {
+        build_fuzz_tree::<true>(&[37, 1, 0, 219]);
+        fuzz_insert(&[37, 1, 0, 219]);
     }
 }

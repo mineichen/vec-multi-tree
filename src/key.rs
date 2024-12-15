@@ -16,6 +16,12 @@ impl Debug for OptionKey {
     }
 }
 
+impl PartialEq<usize> for OptionKey {
+    fn eq(&self, other: &usize) -> bool {
+        self.0 == *other
+    }
+}
+
 impl OptionKey {
     #[inline(always)]
     pub const fn none() -> Self {
