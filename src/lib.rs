@@ -1,0 +1,536 @@
+use std::collections::VecDeque;
+
+use key::OptionKey;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Color {
+    Red,
+    Black,
+}
+
+#[derive(Debug, PartialEq)]
+struct Node<T> {
+    value: T,
+    color: Color,
+    parent: OptionKey,
+    left: OptionKey,
+    right: OptionKey,
+}
+
+impl<T> Node<T> {
+    #[inline(always)]
+    fn is_right(&self, key: usize) -> bool {
+        debug_assert!(key != usize::MAX);
+        match self.right.get() {
+            Some(x) => x == key,
+            None => false,
+        }
+    }
+}
+
+impl<T> From<T> for Node<T> {
+    fn from(value: T) -> Self {
+        Self {
+            value,
+            color: Color::Red,
+            parent: Default::default(),
+            left: Default::default(),
+            right: Default::default(),
+        }
+    }
+}
+
+/// Option<usize> would be too inefficient... use magic-value usize::MAX for null
+/// This could only be achieved, if the vec contains usize::MAX elements, which is not possible, as removal just unlinks items
+mod key {
+    use std::{fmt::Debug, usize};
+
+    #[repr(transparent)]
+    #[derive(Clone, Copy, PartialEq)]
+    pub(super) struct OptionKey(usize);
+
+    impl Debug for OptionKey {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if self.0 == usize::MAX {
+                f.debug_tuple("None").finish()
+            } else {
+                f.debug_tuple("Some").field(&self.0).finish()
+            }
+        }
+    }
+
+    impl OptionKey {
+        #[inline(always)]
+        pub const fn none() -> Self {
+            Self(usize::MAX)
+        }
+
+        #[inline(always)]
+        pub const fn new(x: usize) -> Self {
+            debug_assert!(x != usize::MAX);
+            Self(x)
+        }
+
+        #[inline(always)]
+        pub const fn get(&self) -> Option<usize> {
+            if self.0 == usize::MAX {
+                None
+            } else {
+                Some(self.0)
+            }
+        }
+
+        #[inline(always)]
+        pub fn insert_if_none(&mut self, x: usize) -> bool {
+            debug_assert!(x != usize::MAX);
+            if self.0 == usize::MAX {
+                self.0 = x;
+                true
+            } else {
+                false
+            }
+        }
+
+        #[inline(always)]
+        pub const fn unwrap(&self) -> usize {
+            debug_assert!(self.0 != usize::MAX);
+            self.0
+        }
+    }
+    impl Default for OptionKey {
+        fn default() -> Self {
+            Self::none()
+        }
+    }
+}
+
+pub struct RedBlackTreeSet<T> {
+    nodes: Vec<Node<T>>,
+    root: usize,
+}
+
+impl<T: Ord> RedBlackTreeSet<T> {
+    pub fn new(value: T) -> Self {
+        let mut node: Node<_> = value.into();
+        node.color = Color::Black;
+        RedBlackTreeSet {
+            nodes: vec![node],
+            root: 0,
+        }
+    }
+
+    pub fn insert(&mut self, value: T) -> usize {
+        // Create new node
+        let new_node_idx = self.nodes.len();
+        let mut new_node = Node {
+            value,
+            color: Color::Red,
+            parent: OptionKey::none(),
+            left: OptionKey::none(),
+            right: OptionKey::none(),
+        };
+
+        // If tree is empty, set as root and color black
+        let mut current = self.root;
+        loop {
+            match self.compare_node_value(current, &new_node.value) {
+                std::cmp::Ordering::Less => {
+                    if self.nodes[current].right.insert_if_none(new_node_idx) {
+                        new_node.parent = OptionKey::new(current);
+                        break;
+                    }
+                    current = self.nodes[current].right.unwrap();
+                }
+                std::cmp::Ordering::Greater => {
+                    if self.nodes[current].left.insert_if_none(new_node_idx) {
+                        new_node.parent = OptionKey::new(current);
+                        break;
+                    }
+                    current = self.nodes[current].left.unwrap();
+                }
+                std::cmp::Ordering::Equal => {
+                    // If equal, we could either replace or keep existing
+                    // Here we're choosing to keep existing
+                    return current;
+                }
+            }
+        }
+
+        self.nodes.push(new_node);
+        self.insert_fixup(new_node_idx);
+
+        new_node_idx
+    }
+
+    fn insert_fixup(&mut self, mut node: usize) {
+        let mut limit = 10;
+        while let Some(parent_idx) = self.nodes[node].parent.get() {
+            limit -= 1;
+            if limit == 0 {
+                panic!("Infinite Recursion");
+            }
+
+            //println!("Fixup {node}");
+            // If parent is black, tree is valid
+            if self.nodes[parent_idx].color == Color::Black {
+                break;
+            }
+
+            // Get grandparent (must exist if parent is red)
+            let grandparent_idx = self.nodes[parent_idx].parent.unwrap();
+            let is_parent_right = self.nodes[grandparent_idx].is_right(parent_idx);
+
+            let uncle_idx = if !is_parent_right {
+                self.nodes[grandparent_idx].right
+            } else {
+                self.nodes[grandparent_idx].left
+            };
+
+            // Uncle red case
+            if let Some(uncle_idx) = uncle_idx
+                .get()
+                .filter(|&idx| self.nodes[idx].color == Color::Red)
+            {
+                self.nodes[parent_idx].color = Color::Black;
+                self.nodes[uncle_idx].color = Color::Black;
+                self.nodes[grandparent_idx].color = Color::Red;
+                node = grandparent_idx;
+                continue;
+            }
+
+            let is_node_right = self.nodes[parent_idx].is_right(node);
+            // Rotation cases
+            match (is_parent_right, is_node_right) {
+                (true, true) => {
+                    let parent_index = self.nodes[node].parent.unwrap();
+                    self.nodes[parent_index].color = Color::Black;
+                    self.nodes[grandparent_idx].color = Color::Red;
+                    self.rotate_left(grandparent_idx);
+                }
+                (true, false) => {
+                    node = parent_idx;
+                    self.rotate_right(node);
+                }
+                (false, true) => {
+                    node = parent_idx;
+                    self.rotate_left(node);
+                }
+                (false, false) => {
+                    let parent_index = self.nodes[node].parent.unwrap();
+                    self.nodes[parent_index].color = Color::Black;
+                    self.nodes[grandparent_idx].color = Color::Red;
+                    self.rotate_right(grandparent_idx);
+                }
+            }
+        }
+
+        // Ensure root is always black
+        self.nodes[self.root].color = Color::Black;
+    }
+
+    fn compare_node_value(&self, node_idx: usize, value: &T) -> std::cmp::Ordering {
+        self.nodes[node_idx].value.cmp(value)
+    }
+
+    fn rotate_left(&mut self, node_idx: usize) {
+        // println!("Rotate left {node_idx}");
+        let right_child_idx = self.nodes[node_idx].right.unwrap();
+
+        // Update parent references
+        self.nodes[right_child_idx].parent = self.nodes[node_idx].parent;
+        if let Some(parent_idx) = self.nodes[node_idx].parent.get() {
+            if self.nodes[parent_idx].left.get() == Some(node_idx) {
+                self.nodes[parent_idx].left = OptionKey::new(right_child_idx);
+            } else {
+                self.nodes[parent_idx].right = OptionKey::new(right_child_idx);
+            }
+        } else {
+            self.root = right_child_idx;
+        }
+
+        // Rotate
+        self.nodes[node_idx].right = self.nodes[right_child_idx].left;
+        if let Some(left_of_right) = self.nodes[right_child_idx].left.get() {
+            self.nodes[left_of_right].parent = OptionKey::new(node_idx);
+        }
+        self.nodes[right_child_idx].left = OptionKey::new(node_idx);
+        self.nodes[node_idx].parent = OptionKey::new(right_child_idx);
+    }
+
+    fn rotate_right(&mut self, node_idx: usize) {
+        //  println!("Rotate right");
+        let left_child_idx = self.nodes[node_idx].left.unwrap();
+
+        // Update parent references
+        self.nodes[left_child_idx].parent = self.nodes[node_idx].parent;
+        if let Some(parent_idx) = self.nodes[node_idx].parent.get() {
+            if self.nodes[parent_idx].right.get() == Some(node_idx) {
+                self.nodes[parent_idx].right = OptionKey::new(left_child_idx);
+            } else {
+                self.nodes[parent_idx].left = OptionKey::new(left_child_idx);
+            }
+        } else {
+            self.root = left_child_idx;
+        }
+
+        // Rotate
+        self.nodes[node_idx].left = self.nodes[left_child_idx].right;
+        if let Some(right_of_left) = self.nodes[left_child_idx].right.get() {
+            self.nodes[right_of_left].parent = OptionKey::new(node_idx);
+        }
+        self.nodes[left_child_idx].right = OptionKey::new(node_idx);
+        self.nodes[node_idx].parent = OptionKey::new(left_child_idx);
+    }
+
+    pub fn iter(&self) -> Iter<'_, T> {
+        self.into_iter()
+    }
+
+    pub fn find(&self, value: &T) -> Option<usize> {
+        let mut current = self.root;
+
+        loop {
+            match self.compare_node_value(current, value) {
+                std::cmp::Ordering::Equal => {
+                    return Some(current);
+                }
+                std::cmp::Ordering::Less => {
+                    current = self.nodes[current].right.get()?;
+                }
+                std::cmp::Ordering::Greater => {
+                    current = self.nodes[current].left.get()?;
+                }
+            }
+        }
+    }
+}
+
+// Iter struct to allow in-order traversal
+pub struct Iter<'a, T: Ord> {
+    tree: &'a RedBlackTreeSet<T>,
+    stack: VecDeque<usize>,
+}
+
+impl<'a, T: Ord> IntoIterator for &'a RedBlackTreeSet<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut stack = VecDeque::new();
+
+        // Start with the root if it exists and is active
+        let mut current = self.root;
+        loop {
+            stack.push_back(current);
+            if let Some(x) = self.nodes[current].left.get() {
+                current = x;
+            } else {
+                break;
+            }
+        }
+
+        Iter { tree: self, stack }
+    }
+}
+
+impl<'a, T: Ord> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.stack.pop_back()?;
+        let node = &self.tree.nodes[current];
+
+        // Get the value
+        let value = &node.value;
+
+        // Prepare next node in the iteration
+        let mut current = &node.right;
+        while let Some(k) = current.get() {
+            self.stack.push_back(k);
+            current = &self.tree.nodes[k].left;
+        }
+
+        Some(value)
+    }
+}
+
+impl<T> RedBlackTreeSet<T> {
+    pub fn validate_constraints(&self) {
+        let root_node = &self.nodes[self.root];
+        assert_eq!(root_node.color, Color::Black);
+        self.black_count(root_node, Color::Black);
+    }
+    fn black_count(&self, node: &Node<T>, parent_color: Color) -> u16 {
+        if parent_color == Color::Red && node.color == Color::Red {
+            panic!("Two subsequent RED nodes");
+        }
+        (match (node.left.get(), node.right.get()) {
+            (None, None) => 0,
+            (None, Some(right)) => self.black_count(&self.nodes[right], node.color),
+            (Some(left), None) => self.black_count(&self.nodes[left], node.color),
+            (Some(left), Some(right)) => {
+                let left_count = self.black_count(&self.nodes[left], node.color);
+                let right_count = self.black_count(&self.nodes[right], node.color);
+                assert_eq!(left_count, right_count);
+                left_count
+            }
+        }) + (node.color == Color::Black) as u16
+    }
+}
+
+fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<&u8>> {
+    let mut iter = data.into_iter();
+    let first = iter.next()?;
+    let mut tree = RedBlackTreeSet::new(first);
+    for x in data {
+        if LOG {
+            println!("");
+        }
+        tree.insert(x);
+        if LOG {
+            println!(
+                "Root: {}\n{}",
+                tree.root,
+                tree.nodes
+                    .iter()
+                    .map(|x| format!("{x:?}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+    }
+    if LOG {
+        println!("Done inserting");
+    }
+    Some(tree)
+}
+
+pub fn fuzz_insert(data: &[u8]) {
+    let Some(tree) = build_fuzz_tree::<false>(data) else {
+        return;
+    };
+    tree.validate_constraints();
+    let collected = tree.iter().copied().collect::<Vec<_>>();
+    let expected = data.into_iter().collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(expected.len(), collected.len());
+    for (a, b) in tree.iter().zip(expected.iter()) {
+        assert_eq!(a, b);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rotate_right() {
+        let mut tree = RedBlackTreeSet::new(15);
+
+        // Insert some values
+        tree.insert(5);
+        tree.insert(1);
+        tree.validate_constraints();
+
+        assert_eq!(
+            vec![Color::Red, Color::Black, Color::Red],
+            tree.nodes.iter().map(|x| x.color).collect::<Vec<_>>()
+        );
+        assert_eq!(vec![1, 5, 15], tree.iter().copied().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn complex() {
+        let mut tree = RedBlackTreeSet::new(5);
+        tree.insert(8);
+        tree.insert(9);
+        tree.insert(12);
+        tree.insert(13);
+        tree.insert(15);
+        tree.insert(19);
+        tree.insert(23);
+        tree.insert(10);
+
+        tree.validate_constraints();
+
+        assert_eq!(
+            vec![
+                &Node {
+                    color: Color::Black,
+                    value: 5,
+                    parent: OptionKey::new(1),
+                    left: OptionKey::none(),
+                    right: OptionKey::none(),
+                },
+                &Node {
+                    color: Color::Red,
+                    value: 8,
+                    parent: OptionKey::new(3),
+                    left: OptionKey::new(0),
+                    right: OptionKey::new(2),
+                },
+                &Node {
+                    color: Color::Black,
+                    value: 9,
+                    parent: OptionKey::new(1),
+                    left: OptionKey::none(),
+                    right: OptionKey::new(8),
+                },
+                &Node {
+                    color: Color::Black,
+                    value: 12,
+                    parent: OptionKey::none(),
+                    left: OptionKey::new(1),
+                    right: OptionKey::new(5),
+                },
+                &Node {
+                    color: Color::Black,
+                    value: 13,
+                    parent: OptionKey::new(5),
+                    left: OptionKey::none(),
+                    right: OptionKey::none(),
+                },
+                &Node {
+                    color: Color::Red,
+                    value: 15,
+                    parent: OptionKey::new(3),
+                    left: OptionKey::new(4),
+                    right: OptionKey::new(6),
+                },
+                &Node {
+                    color: Color::Black,
+                    value: 19,
+                    parent: OptionKey::new(5),
+                    left: OptionKey::none(),
+                    right: OptionKey::new(7),
+                },
+                &Node {
+                    color: Color::Red,
+                    value: 23,
+                    parent: OptionKey::new(6),
+                    left: OptionKey::none(),
+                    right: OptionKey::none(),
+                },
+                &Node {
+                    color: Color::Red,
+                    value: 10,
+                    parent: OptionKey::new(2),
+                    left: OptionKey::none(),
+                    right: OptionKey::none(),
+                },
+            ],
+            tree.nodes.iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn insert_big_small_middle() {
+        build_fuzz_tree::<true>(&[203, 47, 65]);
+        fuzz_insert(&[203, 47, 65]);
+    }
+
+    #[test]
+    fn insert_big_small_smaller() {
+        build_fuzz_tree::<true>(&[203, 47, 10]);
+        fuzz_insert(&[203, 47, 10]);
+    }
+}

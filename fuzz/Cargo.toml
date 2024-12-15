@@ -1,0 +1,21 @@
+[package]
+name = "vec-multi-tree-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.vec-multi-tree]
+path = ".."
+
+[[bin]]
+name = "insert"
+path = "fuzz_targets/insert.rs"
+test = false
+doc = false
+bench = false
