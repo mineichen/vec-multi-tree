@@ -44,7 +44,7 @@ impl<'a, T> InternalStorage for &'a SharedVecStorage<T> {
         unsafe { &*self.nodes.get() }.debug_nodes()
     }
 
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(feature = "fuzz", test))]
     fn debug_str(&self) -> String
     where
         Self::Item: core::fmt::Debug,

@@ -37,7 +37,7 @@ impl<T> InternalStorage for VecStorage<T> {
     {
         self.0.iter().cloned().collect()
     }
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(feature = "fuzz", test))]
     fn debug_str(&self) -> String
     where
         Self::Item: std::fmt::Debug,

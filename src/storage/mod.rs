@@ -46,7 +46,7 @@ pub trait InternalStorage: Storage {
     fn debug_nodes(&self) -> Vec<Node<Self::Item>>
     where
         Self::Item: Copy;
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(feature = "fuzz", test))]
     fn debug_str(&self) -> String
     where
         Self::Item: Debug;
