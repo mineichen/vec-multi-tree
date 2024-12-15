@@ -6,7 +6,7 @@ mod storage;
 use std::collections::VecDeque;
 
 use key::OptionKey;
-use storage::VecStorage;
+use storage::{InternalStorage, Storage};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Color {
@@ -51,15 +51,23 @@ pub struct RedBlackTreeSet<TStorage> {
     root: usize,
 }
 
-impl<T: Ord> RedBlackTreeSet<VecStorage<T>> {
+impl<T: Ord> RedBlackTreeSet<Vec<Node<T>>> {
     pub fn new(value: T) -> Self {
         RedBlackTreeSet {
-            nodes: VecStorage::new(value),
+            nodes: {
+                let mut node: Node<_> = value.into();
+                node.color = Color::Black;
+                vec![node]
+            },
             root: 0,
         }
     }
-
-    pub fn insert(&mut self, value: T) -> usize {
+}
+impl<TStorage: InternalStorage> RedBlackTreeSet<TStorage>
+where
+    <TStorage as Storage>::Item: Ord,
+{
+    pub fn insert(&mut self, value: <TStorage as Storage>::Item) -> usize {
         // Create new node
         let new_node_idx = self.nodes.len();
         let mut new_node = Node {
@@ -170,7 +178,11 @@ impl<T: Ord> RedBlackTreeSet<VecStorage<T>> {
         self.nodes.get_mut(self.root).color = Color::Black;
     }
 
-    fn compare_node_value(&self, node_idx: usize, value: &T) -> std::cmp::Ordering {
+    fn compare_node_value(
+        &self,
+        node_idx: usize,
+        value: &<TStorage as Storage>::Item,
+    ) -> std::cmp::Ordering {
         self.nodes.get(node_idx).value.cmp(value)
     }
 
@@ -227,11 +239,14 @@ impl<T: Ord> RedBlackTreeSet<VecStorage<T>> {
         self.nodes.get_mut(node_idx).parent = OptionKey::new(left_child_idx);
     }
 
-    pub fn iter(&self) -> Iter<'_, T> {
+    pub fn iter<'a>(&'a self) -> Iter<'a, TStorage>
+    where
+        <TStorage as Storage>::Item: 'a,
+    {
         self.into_iter()
     }
 
-    pub fn find(&self, value: &T) -> Option<usize> {
+    pub fn find(&self, value: &<TStorage as Storage>::Item) -> Option<usize> {
         let mut current = self.root;
 
         loop {
@@ -251,14 +266,18 @@ impl<T: Ord> RedBlackTreeSet<VecStorage<T>> {
 }
 
 // Iter struct to allow in-order traversal
-pub struct Iter<'a, T: Ord> {
-    tree: &'a RedBlackTreeSet<VecStorage<T>>,
+
+pub struct Iter<'a, TStorage: InternalStorage> {
+    tree: &'a RedBlackTreeSet<TStorage>,
     stack: VecDeque<usize>,
 }
 
-impl<'a, T: Ord> IntoIterator for &'a RedBlackTreeSet<VecStorage<T>> {
-    type Item = &'a T;
-    type IntoIter = Iter<'a, T>;
+impl<'a, TStorage: 'a + InternalStorage> IntoIterator for &'a RedBlackTreeSet<TStorage>
+where
+    <TStorage as Storage>::Item: 'a + Ord,
+{
+    type Item = &'a <TStorage as Storage>::Item;
+    type IntoIter = Iter<'a, TStorage>;
 
     fn into_iter(self) -> Self::IntoIter {
         let mut stack = VecDeque::new();
@@ -278,8 +297,11 @@ impl<'a, T: Ord> IntoIterator for &'a RedBlackTreeSet<VecStorage<T>> {
     }
 }
 
-impl<'a, T: Ord> Iterator for Iter<'a, T> {
-    type Item = &'a T;
+impl<'a, TStorage: 'a + InternalStorage> Iterator for Iter<'a, TStorage>
+where
+    <TStorage as Storage>::Item: Ord + 'a,
+{
+    type Item = &'a <TStorage as Storage>::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop_back()?;
@@ -299,7 +321,7 @@ impl<'a, T: Ord> Iterator for Iter<'a, T> {
     }
 }
 
-impl<T> RedBlackTreeSet<VecStorage<T>> {
+impl<T> RedBlackTreeSet<Vec<Node<T>>> {
     pub fn validate_constraints(&self) {
         let root_node = &self.nodes.get(self.root);
         assert_eq!(root_node.color, Color::Black);
@@ -323,7 +345,7 @@ impl<T> RedBlackTreeSet<VecStorage<T>> {
     }
 }
 
-fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<VecStorage<&u8>>> {
+fn build_fuzz_tree<const LOG: bool>(data: &[u8]) -> Option<RedBlackTreeSet<Vec<Node<&u8>>>> {
     let mut iter = data.into_iter();
     let first = iter.next()?;
     let mut tree = RedBlackTreeSet::new(first);
@@ -373,6 +395,18 @@ mod tests {
             tree.nodes.iter().map(|x| x.color).collect::<Vec<_>>()
         );
         assert_eq!(vec![1, 5, 15], tree.iter().copied().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn share_storage() {
+        let storage = storage::SharedVecStorage::new();
+        let mut tree = storage.add_tree(1);
+        tree.insert(0);
+
+        let mut tree2 = storage.add_tree(2);
+        tree2.insert(0);
+        assert_eq!(vec![&0, &2], tree2.iter().collect::<Vec<_>>());
+        assert_eq!(vec![&0, &1], tree.iter().collect::<Vec<_>>())
     }
 
     #[test]
