@@ -7,7 +7,7 @@ pub struct VecStorage<T> {
 }
 
 impl<T> VecStorage<T> {
-    pub fn new(value: T) -> Self {
+    pub(crate) fn new(value: T) -> Self {
         let mut node: Node<_> = value.into();
         node.color = Color::Black;
         Self { nodes: vec![node] }
