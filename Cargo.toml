@@ -8,5 +8,5 @@ edition = "2021"
 [features]
 default = ["alloc"]
 alloc = []
-std = []
+std = ["alloc"]
 fuzz = ["std"]
