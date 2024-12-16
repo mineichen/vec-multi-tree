@@ -7,6 +7,12 @@ pub struct SharedVecStorage<T> {
     nodes: UnsafeCell<VecStorage<T>>,
 }
 
+impl<T> Default for SharedVecStorage<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> SharedVecStorage<T> {
     pub fn new() -> Self {
         Self {

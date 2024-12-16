@@ -35,7 +35,7 @@ impl<T> InternalStorage for VecStorage<T> {
     where
         T: Copy,
     {
-        self.0.iter().cloned().collect()
+        self.0.clone()
     }
     #[cfg(any(feature = "fuzz", test))]
     fn debug_str(&self) -> String

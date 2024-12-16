@@ -1,6 +1,6 @@
 //! Option<usize> would be too inefficient... use magic-value usize::MAX for null
 //! This could only be achieved, if the vec contains usize::MAX elements, which is not possible, as removal just unlinks items
-use core::{fmt::Debug, usize};
+use core::fmt::Debug;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq)]

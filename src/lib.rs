@@ -305,11 +305,11 @@ impl<T> RedBlackTreeSet<storage::VecStorage<T>> {
         }
         (match (node.left.get(), node.right.get()) {
             (None, None) => 0,
-            (None, Some(right)) => self.black_count(&self.nodes.get(right), node.color),
-            (Some(left), None) => self.black_count(&self.nodes.get(left), node.color),
+            (None, Some(right)) => self.black_count(self.nodes.get(right), node.color),
+            (Some(left), None) => self.black_count(self.nodes.get(left), node.color),
             (Some(left), Some(right)) => {
-                let left_count = self.black_count(&self.nodes.get(left), node.color);
-                let right_count = self.black_count(&self.nodes.get(right), node.color);
+                let left_count = self.black_count(self.nodes.get(left), node.color);
+                let right_count = self.black_count(self.nodes.get(right), node.color);
                 assert_eq!(left_count, right_count);
                 left_count
             }
@@ -321,13 +321,13 @@ impl<T> RedBlackTreeSet<storage::VecStorage<T>> {
 fn build_fuzz_tree<const LOG: bool>(
     data: &[u8],
 ) -> Option<RedBlackTreeSet<storage::VecStorage<&u8>>> {
-    let mut iter = data.into_iter();
+    let mut iter = data.iter();
     let first = iter.next()?;
     let mut tree = RedBlackTreeSet::new(first);
     for x in data {
         #[cfg(test)]
         if LOG {
-            println!("");
+            println!();
         }
         tree.insert(x);
         if LOG {
@@ -346,7 +346,7 @@ pub fn fuzz_insert(data: &[u8]) {
     };
     tree.validate_constraints();
     let collected = tree.iter().copied().collect::<Vec<_>>();
-    let expected = data.into_iter().collect::<std::collections::BTreeSet<_>>();
+    let expected = data.iter().collect::<std::collections::BTreeSet<_>>();
     assert_eq!(expected.len(), collected.len());
     for (a, b) in tree.iter().zip(expected.iter()) {
         assert_eq!(a, b);
