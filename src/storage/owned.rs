@@ -1,5 +1,5 @@
 use super::{InternalStorage, Storage};
-use crate::{Color, Node};
+use crate::{node::Color, node::Node};
 use alloc::vec::Vec;
 
 pub struct VecStorage<T>(Vec<Node<T>>);

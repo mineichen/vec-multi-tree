@@ -1,10 +1,4 @@
-use core::{
-    cell::UnsafeCell,
-    fmt::Debug,
-    ops::{Deref, DerefMut},
-};
-
-use crate::{Color, Node, RedBlackTreeSet};
+use crate::node::Node;
 
 #[cfg(feature = "alloc")]
 mod owned;
@@ -49,7 +43,7 @@ pub trait InternalStorage: Storage {
     #[cfg(any(feature = "fuzz", test))]
     fn debug_str(&self) -> String
     where
-        Self::Item: Debug;
+        Self::Item: core::fmt::Debug;
     fn get(&self, index: usize) -> &Node<Self::Item>;
     fn get_mut(&mut self, index: usize) -> &mut Node<Self::Item>;
 }

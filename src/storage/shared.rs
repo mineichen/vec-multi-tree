@@ -1,7 +1,7 @@
 use core::cell::UnsafeCell;
 
 use super::{owned::VecStorage, InternalStorage, Storage};
-use crate::{Color, Node, RedBlackTreeSet};
+use crate::{node::Node, Color, RedBlackTreeSet};
 
 pub struct SharedVecStorage<T> {
     nodes: UnsafeCell<VecStorage<T>>,

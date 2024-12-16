@@ -4,48 +4,18 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-mod key;
-mod storage;
-
 use core::cmp::Ordering;
 
 use key::OptionKey;
+use node::{Color, Node};
 use storage::{InternalStorage, Storage};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Color {
-    Red,
-    Black,
-}
+mod key;
+mod node;
+mod storage;
 
-#[derive(Debug, PartialEq, Clone)]
-struct Node<T> {
-    value: T,
-    color: Color,
-    parent: OptionKey,
-    left: OptionKey,
-    right: OptionKey,
-}
-
-impl<T> Node<T> {
-    #[inline(always)]
-    fn is_right(&self, key: usize) -> bool {
-        debug_assert!(key != usize::MAX);
-        self.right == key
-    }
-}
-
-impl<T> From<T> for Node<T> {
-    fn from(value: T) -> Self {
-        Self {
-            value,
-            color: Color::Red,
-            parent: Default::default(),
-            left: Default::default(),
-            right: Default::default(),
-        }
-    }
-}
+#[cfg(feature = "alloc")]
+pub use storage::SharedVecStorage;
 
 pub struct RedBlackTreeSet<TStorage> {
     nodes: TStorage,
@@ -256,7 +226,7 @@ where
 
 // Iter struct to allow in-order traversal
 
-pub struct Iter<'a, TStorage: InternalStorage> {
+pub struct Iter<'a, TStorage> {
     tree: &'a RedBlackTreeSet<TStorage>,
     next: OptionKey,
 }
@@ -385,6 +355,7 @@ pub fn fuzz_insert(data: &[u8]) {
 
 #[cfg(test)]
 mod tests {
+    use super::node::Node;
     use super::*;
 
     #[test]
