@@ -44,7 +44,7 @@ impl OptionKey {
     }
 
     #[inline(always)]
-    pub fn insert_if_none(&mut self, x: usize) -> bool {
+    pub fn replace_if_none(&mut self, x: usize) -> bool {
         debug_assert!(x != usize::MAX);
         if self.0 == usize::MAX {
             self.0 = x;

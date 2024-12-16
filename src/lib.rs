@@ -4,18 +4,21 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-use core::cmp::Ordering;
+use core::{cmp::Ordering, iter::Copied};
 
 use key::OptionKey;
 use node::{Color, Node};
-use storage::{InternalStorage, Storage};
+use storage::{InternalRefStorage, InternalStorage, Storage};
 
+mod iter;
 mod key;
 mod node;
 mod storage;
 
 #[cfg(feature = "alloc")]
 pub use storage::SharedVecStorage;
+
+pub use iter::Iter;
 
 pub struct RedBlackTreeSet<TStorage> {
     nodes: TStorage,
@@ -37,7 +40,6 @@ where
     <TStorage as Storage>::Item: Ord,
 {
     pub fn insert(&mut self, value: <TStorage as Storage>::Item) -> usize {
-        // Create new node
         let new_node_idx = self.nodes.len();
         let mut new_node = Node {
             value,
@@ -50,35 +52,23 @@ where
         // If tree is empty, set as root and color black
         let mut current = self.root;
         loop {
-            match self.compare_node_value(current, &new_node.value) {
-                Ordering::Less => {
-                    let cur_node = self.nodes.get_mut(current);
-                    if cur_node.right.insert_if_none(new_node_idx) {
-                        new_node.parent = OptionKey::new(current);
-                        break;
-                    }
-                    current = cur_node.right.unwrap();
-                }
-                Ordering::Greater => {
-                    let cur_node = self.nodes.get_mut(current);
-                    if cur_node.left.insert_if_none(new_node_idx) {
-                        new_node.parent = OptionKey::new(current);
-                        break;
-                    }
-                    current = cur_node.left.unwrap();
-                }
+            let node = match self.compare_node_value(current, &new_node.value) {
+                Ordering::Less => &mut self.nodes.get_mut(current).right,
+                Ordering::Greater => &mut self.nodes.get_mut(current).left,
                 Ordering::Equal => {
                     // If equal, we could either replace or keep existing
                     // Here we're choosing to keep existing
-                    return current;
+                    break current;
                 }
+            };
+            if node.replace_if_none(new_node_idx) {
+                new_node.parent = OptionKey::new(current);
+                self.nodes.push(new_node);
+                self.insert_fixup(new_node_idx);
+                break new_node_idx;
             }
+            current = node.unwrap();
         }
-
-        self.nodes.push(new_node);
-        self.insert_fixup(new_node_idx);
-
-        new_node_idx
     }
 
     fn insert_fixup(&mut self, mut node: usize) {
@@ -115,8 +105,7 @@ where
             // Rotation cases
             match (is_parent_right, is_node_right) {
                 (true, true) => {
-                    let parent_index = self.nodes.get(node).parent.unwrap();
-                    self.nodes.get_mut(parent_index).color = Color::Black;
+                    self.nodes.get_mut(parent_idx).color = Color::Black;
                     self.nodes.get_mut(grandparent_idx).color = Color::Red;
                     self.rotate_left(grandparent_idx);
                 }
@@ -129,8 +118,7 @@ where
                     self.rotate_left(node);
                 }
                 (false, false) => {
-                    let parent_index = self.nodes.get(node).parent.unwrap();
-                    self.nodes.get_mut(parent_index).color = Color::Black;
+                    self.nodes.get_mut(parent_idx).color = Color::Black;
                     self.nodes.get_mut(grandparent_idx).color = Color::Red;
                     self.rotate_right(grandparent_idx);
                 }
@@ -200,9 +188,19 @@ where
 
     pub fn iter<'a>(&'a self) -> Iter<'a, TStorage>
     where
+        TStorage: InternalRefStorage,
         <TStorage as Storage>::Item: 'a,
     {
-        self.into_iter()
+        unsafe { self.create_iterator() }
+    }
+
+    pub fn iter_copied<'a>(&'a self) -> Copied<Iter<'a, TStorage>>
+    where
+        TStorage: InternalStorage,
+        <TStorage as Storage>::Item: 'a + Copy,
+    {
+        // Safety: Copied doesn't allow extraction of inner iterator
+        unsafe { self.create_iterator().copied() }
     }
 
     pub fn find(&self, value: &<TStorage as Storage>::Item) -> Option<usize> {
@@ -221,74 +219,6 @@ where
                 }
             }
         }
-    }
-}
-
-// Iter struct to allow in-order traversal
-
-pub struct Iter<'a, TStorage> {
-    tree: &'a RedBlackTreeSet<TStorage>,
-    next: OptionKey,
-}
-
-impl<'a, TStorage: 'a + InternalStorage> IntoIterator for &'a RedBlackTreeSet<TStorage>
-where
-    <TStorage as Storage>::Item: 'a + Ord,
-{
-    type Item = &'a <TStorage as Storage>::Item;
-    type IntoIter = Iter<'a, TStorage>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        // Start with the root if it exists and is active
-        let mut current = self.root;
-        while let Some(x) = self.nodes.get(current).left.get() {
-            current = x;
-        }
-
-        Iter {
-            tree: self,
-            next: OptionKey::new(current),
-        }
-    }
-}
-
-impl<'a, TStorage: 'a + InternalStorage> Iterator for Iter<'a, TStorage>
-where
-    <TStorage as Storage>::Item: Ord + 'a,
-{
-    type Item = &'a <TStorage as Storage>::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut current = self.next.get()?;
-        let node = &self.tree.nodes.get(current);
-
-        // Get the value
-        let value = &node.value;
-
-        // Prepare next node in the iteration
-        self.next = match node.right.get() {
-            Some(mut x) => {
-                while let Some(k) = &self.tree.nodes.get(x).left.get() {
-                    x = *k;
-                }
-                OptionKey::new(x)
-            }
-            None => {
-                let mut parent = node.parent;
-                while let Some((k, parent_node)) = parent.get().map(|k| (k, self.tree.nodes.get(k)))
-                {
-                    if parent_node.right == current {
-                        current = k;
-                        parent = parent_node.parent;
-                    } else {
-                        break;
-                    }
-                }
-                parent
-            }
-        };
-
-        Some(value)
     }
 }
 
@@ -386,8 +316,8 @@ mod tests {
 
         let mut tree2 = storage.add_tree(2);
         tree2.insert(0);
-        assert_eq!(vec![&0, &2], tree2.iter().collect::<Vec<_>>());
-        assert_eq!(vec![&0, &1], tree.iter().collect::<Vec<_>>())
+        assert_eq!(vec![0, 2], tree2.iter_copied().collect::<Vec<_>>());
+        assert_eq!(vec![0, 1], tree.iter_copied().collect::<Vec<_>>())
     }
 
     #[test]

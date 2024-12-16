@@ -47,3 +47,5 @@ pub trait InternalStorage: Storage {
     fn get(&self, index: usize) -> &Node<Self::Item>;
     fn get_mut(&mut self, index: usize) -> &mut Node<Self::Item>;
 }
+
+pub trait InternalRefStorage: InternalStorage {}

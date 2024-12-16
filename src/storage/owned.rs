@@ -1,4 +1,4 @@
-use super::{InternalStorage, Storage};
+use super::{InternalRefStorage, InternalStorage, Storage};
 use crate::{node::Color, node::Node};
 use alloc::vec::Vec;
 
@@ -75,3 +75,5 @@ impl<T> InternalStorage for VecStorage<T> {
         }
     }
 }
+
+impl<T> InternalRefStorage for VecStorage<T> {}

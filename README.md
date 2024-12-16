@@ -8,6 +8,7 @@ Fuzz-tested to assure the tree always respects RB rules.
 
 ``` rust
 use vec_multi_tree::RedBlackTreeSet;
+
 let mut tree = RedBlackTreeSet::new(5);
 tree.insert(1);
 assert_eq!(vec![&1, &5], tree.iter().collect::<Vec<_>>());

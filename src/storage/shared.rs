@@ -34,6 +34,8 @@ impl<'a, T> Storage for &'a SharedVecStorage<T> {
     type Item = T;
 }
 
+/// Safety: Unsafe is ok, because the type is !Sync. Send could be implemented, because all Trees have to be destroyed before this type can be moved
+/// Each tree accesses it's own elements. Therefore, no runtime-guard is necessary. Trees with SharedVecStorage must never return references (otherwise the library would be unsound)
 impl<'a, T> InternalStorage for &'a SharedVecStorage<T> {
     fn len(&self) -> usize {
         unsafe { &*self.nodes.get() }.len()
