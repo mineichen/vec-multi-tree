@@ -10,6 +10,8 @@ use key::OptionKey;
 use node::{Color, Node};
 use storage::{InternalRefStorage, InternalStorage, Storage};
 
+#[cfg(any(feature = "fuzz", test))]
+mod fuzz;
 mod iter;
 mod key;
 mod node;
@@ -18,6 +20,8 @@ mod storage;
 #[cfg(feature = "alloc")]
 pub use storage::SharedVecStorage;
 
+#[cfg(any(feature = "fuzz", test))]
+pub use fuzz::*;
 pub use iter::Iter;
 
 pub struct RedBlackTreeSet<TStorage> {
@@ -222,69 +226,10 @@ where
     }
 }
 
-#[cfg(any(feature = "fuzz", test))]
-impl<T> RedBlackTreeSet<storage::VecStorage<T>> {
-    pub fn validate_constraints(&self) {
-        let root_node = &self.nodes.get(self.root);
-        assert_eq!(root_node.color, Color::Black);
-        self.black_count(root_node, Color::Black);
-    }
-    fn black_count(&self, node: &Node<T>, parent_color: Color) -> u16 {
-        if parent_color == Color::Red && node.color == Color::Red {
-            panic!("Two subsequent RED nodes");
-        }
-        (match (node.left.get(), node.right.get()) {
-            (None, None) => 0,
-            (None, Some(right)) => self.black_count(self.nodes.get(right), node.color),
-            (Some(left), None) => self.black_count(self.nodes.get(left), node.color),
-            (Some(left), Some(right)) => {
-                let left_count = self.black_count(self.nodes.get(left), node.color);
-                let right_count = self.black_count(self.nodes.get(right), node.color);
-                assert_eq!(left_count, right_count);
-                left_count
-            }
-        }) + (node.color == Color::Black) as u16
-    }
-}
-
-#[cfg(any(feature = "fuzz", test))]
-fn build_fuzz_tree<const LOG: bool>(
-    data: &[u8],
-) -> Option<RedBlackTreeSet<storage::VecStorage<&u8>>> {
-    let mut iter = data.iter();
-    let first = iter.next()?;
-    let mut tree = RedBlackTreeSet::new(first);
-    for x in data {
-        #[cfg(test)]
-        if LOG {
-            println!();
-        }
-        tree.insert(x);
-        if LOG {
-            println!("Root: {}\n{}", tree.root, tree.nodes.debug_str())
-        }
-    }
-    if LOG {
-        println!("Done inserting");
-    }
-    Some(tree)
-}
-#[cfg(any(feature = "fuzz", test))]
-pub fn fuzz_insert(data: &[u8]) {
-    let Some(tree) = build_fuzz_tree::<false>(data) else {
-        return;
-    };
-    tree.validate_constraints();
-    let collected = tree.iter().copied().collect::<Vec<_>>();
-    let expected = data.iter().collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(expected.len(), collected.len());
-    for (a, b) in tree.iter().zip(expected.iter()) {
-        assert_eq!(a, b);
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use fuzz::{build_fuzz_tree, fuzz_insert};
+
     use super::node::Node;
     use super::*;
 
@@ -406,7 +351,7 @@ mod tests {
 
     #[test]
     fn insert_big_small_middle() {
-        build_fuzz_tree::<true>(&[203, 47, 65]);
+        crate::fuzz::build_fuzz_tree::<true>(&[203, 47, 65]);
         fuzz_insert(&[203, 47, 65]);
     }
 
